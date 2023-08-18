@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.google.gson.Gson;
 import com.py.paymentbackend.entity.OrderInfo;
 import com.py.paymentbackend.entity.RefundInfo;
+import com.py.paymentbackend.enums.wxpay.WxRefundStatus;
 import com.py.paymentbackend.mapper.RefundInfoMapper;
 import com.py.paymentbackend.service.OrderInfoService;
 import com.py.paymentbackend.service.RefundInfoService;
@@ -12,7 +13,10 @@ import com.py.paymentbackend.util.OrderNoUtils;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 
@@ -78,5 +82,20 @@ public class RefundInfoServiceImpl extends ServiceImpl<RefundInfoMapper, RefundI
 
         //更新退款单
         baseMapper.update(refundInfo, queryWrapper);
+    }
+
+    /**
+     * 查询一定时间范围内退款未成功的退款单
+     * @param minutes
+     * @return
+     */
+    @Override
+    public List<RefundInfo> getNoRefundOrderByDuration(int minutes, String payType) {
+        Instant instant = Instant.now().minus(Duration.ofMinutes(minutes));
+        QueryWrapper<RefundInfo> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("refund_status", WxRefundStatus.PROCESSING.getType());
+        queryWrapper.le("create_time", instant);
+        queryWrapper.eq("payment_type", payType);
+        return baseMapper.selectList(queryWrapper);
     }
 }
