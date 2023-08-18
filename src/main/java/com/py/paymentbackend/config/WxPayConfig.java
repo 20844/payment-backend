@@ -73,7 +73,7 @@ public class WxPayConfig {
     @Bean
     public ScheduledUpdateCertificatesVerifier getVerifier(){
         log.info("获取签名验证器");
-        // 获取商户私钥
+        // 获取商户私钥ß
         PrivateKey privateKey = getPrivateKey(privateKeyPath);
         // 私钥签名对象（签名）
         PrivateKeySigner privateKeySigner = new PrivateKeySigner(mchSerialNo, privateKey);
@@ -100,6 +100,22 @@ public class WxPayConfig {
         WechatPayHttpClientBuilder builder = WechatPayHttpClientBuilder.create()
                 .withMerchant(mchId, mchSerialNo, privateKey)
                 .withValidator(new WechatPay2Validator(verifier));
+        // ... 接下来，你仍然可以通过builder设置各种参数，来配置你的HttpClient
+        // 通过WechatPayHttpClientBuilder构造的HttpClient，会自动的处理签名和验签，并进行证书自动更新
+        CloseableHttpClient httpClient = builder.build();
+        return httpClient;
+    }
+
+
+    @Bean(name = "zhangdanClient")
+    public CloseableHttpClient zhangdanClient(ScheduledUpdateCertificatesVerifier verifier){
+        log.info("获取httpClient");
+        //获取商户私钥
+        PrivateKey privateKey = getPrivateKey(privateKeyPath);
+        //用于构造HttpClient
+        WechatPayHttpClientBuilder builder = WechatPayHttpClientBuilder.create()
+                .withMerchant(mchId, mchSerialNo, privateKey)
+                .withValidator(response -> true);
         // ... 接下来，你仍然可以通过builder设置各种参数，来配置你的HttpClient
         // 通过WechatPayHttpClientBuilder构造的HttpClient，会自动的处理签名和验签，并进行证书自动更新
         CloseableHttpClient httpClient = builder.build();

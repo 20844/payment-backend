@@ -1,5 +1,6 @@
 package com.py.paymentbackend.service.impl;
 
+import com.github.wxpay.sdk.WXPayUtil;
 import com.google.gson.Gson;
 import com.py.paymentbackend.config.WxPayConfig;
 import com.py.paymentbackend.entity.OrderInfo;
@@ -14,6 +15,7 @@ import com.py.paymentbackend.service.OrderInfoService;
 import com.py.paymentbackend.service.PaymentInfoService;
 import com.py.paymentbackend.service.RefundInfoService;
 import com.py.paymentbackend.service.WxPayService;
+import com.py.paymentbackend.util.HttpClientUtils;
 import com.wechat.pay.contrib.apache.httpclient.util.AesUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -64,6 +66,12 @@ public class WxPayServiceImpl implements WxPayService {
 
     @Resource
     private RefundInfoService refundInfoService;
+
+    /**
+     * 获取微信支付的httpClient，不对响应进行验签
+     */
+    @Resource
+    private CloseableHttpClient zhangdanClient;
 
     private final ReentrantLock lock = new ReentrantLock();
 
@@ -555,4 +563,150 @@ public class WxPayServiceImpl implements WxPayService {
         }
     }
 
+    /**
+     * 获取交易账单URL
+     */
+    @Override
+    public String queryBill(String billDate, String type) throws IOException {
+        // 1.日志记录
+        log.info("请求微信获取交易账单下载地址...，日期是:{}", billDate);
+
+        // 2.构造参数和请求
+        String url = "";
+        if("tradebill".equals(type)){
+            url = WxApiType.TRADE_BILLS.getType();
+        }else if("fundflowbill".equals(type)){
+            url = WxApiType.FUND_FLOW_BILLS.getType();
+        }else{
+            throw new RuntimeException("不支持的账单类型");
+        }
+
+        // 3.处理响应获取需要的url
+        url = wxPayConfig.getDomain().concat(url).concat("?bill_date=").concat(billDate);
+        HttpGet httpGet = new HttpGet(url);
+        httpGet.addHeader("Accept", "application/json");
+        CloseableHttpResponse response = wxPayClient.execute(httpGet);
+        try {
+            String bodyAsString = EntityUtils.toString(response.getEntity());
+            int statusCode = response.getStatusLine().getStatusCode();
+            if (statusCode == 200) {
+                log.info("成功, 申请账单返回结果 = " + bodyAsString);
+            } else if (statusCode == 204) {
+                log.info("成功");
+            } else {
+                throw new RuntimeException("申请账单异常, 响应码 = " + statusCode+ ", 申请账单返回结果 = " + bodyAsString);
+            }
+            // 获取账单下载地址
+            Gson gson = new Gson();
+            Map<String, String> resultMap = gson.fromJson(bodyAsString, HashMap.class);
+            return resultMap.get("download_url");
+        } finally {
+            response.close();
+        }
+    }
+
+    @Override
+    public String downloadBill(String billDate, String type) throws IOException {
+        // 1.日志记录
+        log.info("下载{}的账单，类型是{}", billDate, type);
+
+        // 2.获取交易账单URL
+        String downloadUrl = this.queryBill(billDate, type);
+
+
+
+        // 3.下载账单
+        HttpGet httpGet = new HttpGet(downloadUrl);
+        httpGet.addHeader("Accept", "application/json");
+        // todo https://github.com/wechatpay-apiv3/wechatpay-apache-httpclient#%E5%A6%82%E4%BD%95%E4%B8%8B%E8%BD%BD%E8%B4%A6%E5%8D%95
+        CloseableHttpResponse response = zhangdanClient.execute(httpGet);
+        try {
+            String bodyAsString = EntityUtils.toString(response.getEntity());
+            int statusCode = response.getStatusLine().getStatusCode();
+            if (statusCode == 200) {
+                log.info("成功, 下载账单返回结果 = " + bodyAsString);
+            } else if (statusCode == 204) {
+                log.info("成功");
+            } else {
+                throw new RuntimeException("下载账单异常, 响应码 = " + statusCode+ ", 下载账单返回结果 = " + bodyAsString);
+            }
+            return bodyAsString;
+        } finally {
+            response.close();
+        }
+    }
+
+    /**
+     * native下单V2
+     * @param productId
+     * @param remoteAddr
+     * @return
+     */
+    @Override
+    public Map<String, Object> nativePayV2(Long productId, String remoteAddr) throws Exception {
+        // 1.记录日志
+        log.info("生成订单");
+
+        // 2.生成订单
+        String codeUrl;
+        OrderInfo orderInfo = orderInfoService.createOrderByProductId(productId, PayType.WXPAY.getType());
+        if (Objects.nonNull(orderInfo) && !StringUtils.isEmpty(orderInfo.getCodeUrl())) {
+            log.info("订单已存在，二维码已保存");
+            codeUrl = orderInfo.getCodeUrl();
+            Map<String, Object> map = new HashMap<>();
+            map.put("codeUrl", codeUrl);
+            map.put("orderNo", orderInfo.getOrderNo());
+            return map;
+        }
+        // 订单不存在，需要调微信api去下单
+        log.info("调用统一下单API");
+
+        // 3.组装参数
+        Map<String, String> params = new HashMap<>();
+        params.put("appid", wxPayConfig.getAppid());//关联的公众号的appid
+        params.put("mch_id", wxPayConfig.getMchId());//商户号
+        params.put("nonce_str", WXPayUtil.generateNonceStr());//生成随机字符串
+        params.put("body", orderInfo.getTitle());
+        params.put("out_trade_no", orderInfo.getOrderNo());
+
+        // 注意，这里必须使用字符串类型的参数（总金额：分）
+        String totalFee = orderInfo.getTotalFee() + "";
+        params.put("total_fee", totalFee);
+
+        params.put("spbill_create_ip", remoteAddr);
+        params.put("notify_url",
+                wxPayConfig.getNotifyDomain().concat(WxNotifyType.NATIVE_NOTIFY.getType()));
+        params.put("trade_type", "NATIVE");
+
+        // 将参数转换成xml字符串格式：生成带有签名的xml格式字符串
+        String xmlParams = WXPayUtil.generateSignedXml(params, wxPayConfig.getPartnerKey());
+        log.info("\n xmlParams：\n" + xmlParams);
+
+        // 4.统一下单
+        HttpClientUtils client = new HttpClientUtils("https://api.mch.weixin.qq.com/pay/unifiedorder");
+        client.setXmlParam(xmlParams);//将参数放入请求对象的方法体
+        client.setHttps(true);//使用https形式发送
+        client.post();//发送请求
+        String resultXml = client.getContent();//得到响应结果
+        log.info("\n resultXml：\n" + resultXml);
+
+        // 将xml响应结果转成map对象
+        Map<String, String> resultMap = WXPayUtil.xmlToMap(resultXml);
+
+        // 错误处理
+        if("FAIL".equals(resultMap.get("return_code")) ||
+                "FAIL".equals(resultMap.get("result_code"))){
+            log.error("微信支付统一下单错误 ===> {} ", resultXml);
+            throw new RuntimeException("微信支付统一下单错误");
+        }
+
+        // 5.保存并返回二维码
+        codeUrl = resultMap.get("code_url");
+        String orderNo = orderInfo.getOrderNo();
+        orderInfoService.saveCodeUrl(orderNo, codeUrl);
+        Map<String, Object> map = new HashMap<>();
+        map.put("codeUrl", codeUrl);
+        map.put("orderNo", orderInfo.getOrderNo());
+        return map;
+    }
 }

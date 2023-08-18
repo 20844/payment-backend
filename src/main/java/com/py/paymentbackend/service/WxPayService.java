@@ -67,5 +67,26 @@ public interface WxPayService {
      */
     void processRefund(Map<String, Object> dataMap) throws Exception;
 
+    /**
+     * 获取交易账单URL
+     */
+    String queryBill(String billDate, String type) throws IOException;
+
+    /**
+     * 下载账单
+     * @param billDate
+     * @param type
+     * @return
+     */
+    String downloadBill(String billDate, String type) throws IOException;
+
+    /**
+     * native下单V2
+     * @param productId
+     * @param remoteAddr
+     * @return
+     */
+    Map<String,Object> nativePayV2(Long productId, String remoteAddr) throws Exception;
+
 
 }

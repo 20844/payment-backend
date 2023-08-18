@@ -244,5 +244,44 @@ public class WxPayController {
         }
     }
 
+    /**
+     * 获取交易账单URL
+     * 微信支付按天提供交易账单文件，服务商可以通过该接口获取账单文件的下载地址。
+     * 文件内包含交易相关的金额、时间、营销等信息，供商户核对订单、退款、银行到账等情况。
+     * @param billDate
+     * @param type
+     * @return
+     * @throws Exception
+     */
+    @ApiOperation("获取账单url：测试用")
+    @GetMapping("/querybill/{billDate}/{type}")
+    public R queryTradeBill(
+            @PathVariable String billDate,
+            @PathVariable String type) throws Exception {
+        log.info("获取交易账单URL");
+        String downloadUrl = wxPayService.queryBill(billDate, type);
+        return R.ok().setMessage("获取交易账单URL成功").data("downloadUrl", downloadUrl);
+    }
+
+
+    /**
+     * 下载账单API为通用接口，交易/资金账单都可以通过该接口获取到对应的账单。
+     * 账单文件的下载地址的有效时间为30s
+     * 这个微信接口响应信息头不包含微信接口响应的签名值，因此需要跳过验签的流程，所以需要我们在获取下载地址的时候对url进行hash比较，但是都对响应验签了，还有必要吗
+     * 感觉不是文件啊，是个json
+     * @param billDate
+     * @param type
+     * @return
+     * @throws Exception
+     */
+    @ApiOperation("下载账单")
+    @GetMapping("/downloadbill/{billDate}/{type}")
+    public R downloadBill(
+            @PathVariable String billDate,
+            @PathVariable String type) throws Exception {
+        log.info("下载账单");
+        String result = wxPayService.downloadBill(billDate, type);
+        return R.ok().data("result", result);
+    }
 
 }
