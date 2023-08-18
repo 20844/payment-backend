@@ -7,6 +7,7 @@ import com.py.paymentbackend.enums.OrderStatus;
 import com.py.paymentbackend.enums.PayType;
 import com.py.paymentbackend.enums.wxpay.WxApiType;
 import com.py.paymentbackend.enums.wxpay.WxNotifyType;
+import com.py.paymentbackend.enums.wxpay.WxTradeState;
 import com.py.paymentbackend.service.OrderInfoService;
 import com.py.paymentbackend.service.PaymentInfoService;
 import com.py.paymentbackend.service.WxPayService;
@@ -347,6 +348,44 @@ public class WxPayServiceImpl implements WxPayService {
         } finally {
             response.close();
         }
+    }
+
+    /**
+     * 根据订单号查询微信支付查单接口，核实订单状态
+     * 如果订单已支付，则更新商户端订单状态，并记录支付日志
+     * 如果订单未支付，则调用关单接口关闭订单，并更新商户端订单状态
+     * @param orderNo
+     */
+    @Override
+    public void checkOrderStatus(String orderNo) throws IOException {
+        log.warn("根据订单号核实订单状态 orderNo:{}", orderNo);
+        // 1.调用微信支付查单接口
+        String result = this.queryOrder(orderNo);
+
+        // 2.转换响应参数
+        Gson gson = new Gson();
+        Map resultMap = gson.fromJson(result, HashMap.class);
+
+        // 3.获取微信支付端的订单状态
+        String tradeState = (String) resultMap.get("trade_state");
+
+        // 4.判断订单状态 确认已支付则更新订单状态，否则关闭订单
+        if (WxTradeState.SUCCESS.getType().equals(tradeState)) {
+            log.warn("核实订单已支付，orderNo:{}", orderNo);
+            // 如果确认订单已支付则更新本地订单状态
+            orderInfoService.updateStatusByOrderNo(orderNo, OrderStatus.SUCCESS);
+            // 记录支付日志
+            paymentInfoService.createPaymentInfo(result);
+        }
+
+        if (WxTradeState.NOTPAY.getType().equals(tradeState)) {
+            log.warn("核实订单未支付，orderNo:{}", orderNo);
+            // 订单未支付，则调用关单接口
+            this.closeOrder(orderNo);
+            // 更新本地订单状态
+            orderInfoService.updateStatusByOrderNo(orderNo, OrderStatus.CLOSED);
+        }
+
     }
 
 }
