@@ -3,6 +3,7 @@ package com.py.paymentbackend.service.impl;
 import com.google.gson.Gson;
 import com.py.paymentbackend.config.WxPayConfig;
 import com.py.paymentbackend.entity.OrderInfo;
+import com.py.paymentbackend.entity.RefundInfo;
 import com.py.paymentbackend.enums.OrderStatus;
 import com.py.paymentbackend.enums.PayType;
 import com.py.paymentbackend.enums.wxpay.WxApiType;
@@ -10,6 +11,7 @@ import com.py.paymentbackend.enums.wxpay.WxNotifyType;
 import com.py.paymentbackend.enums.wxpay.WxTradeState;
 import com.py.paymentbackend.service.OrderInfoService;
 import com.py.paymentbackend.service.PaymentInfoService;
+import com.py.paymentbackend.service.RefundInfoService;
 import com.py.paymentbackend.service.WxPayService;
 import com.wechat.pay.contrib.apache.httpclient.util.AesUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -20,6 +22,7 @@ import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.util.EntityUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import javax.annotation.Resource;
@@ -57,6 +60,9 @@ public class WxPayServiceImpl implements WxPayService {
 
     @Resource
     private PaymentInfoService paymentInfoService;
+
+    @Resource
+    private RefundInfoService refundInfoService;
 
     private final ReentrantLock lock = new ReentrantLock();
 
@@ -386,6 +392,71 @@ public class WxPayServiceImpl implements WxPayService {
             orderInfoService.updateStatusByOrderNo(orderNo, OrderStatus.CLOSED);
         }
 
+    }
+
+    /**
+     * 申请退款，这个接口和文档不一样了，不知道能不能行呢
+     * @param orderNo
+     * @param reason
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void refund(String orderNo, String reason) throws IOException {
+
+        log.info("创建退款单记录");
+        // 根据订单号创建退款单
+        RefundInfo refundInfo = refundInfoService.createRefundByOrderNo(orderNo, reason, PayType.WXPAY.getType());
+
+        log.info("调用微信退款接口");
+        String url = wxPayConfig.getDomain().concat(WxApiType.DOMESTIC_REFUNDS.getType());
+        HttpPost httpPost = new HttpPost(url);
+        // 请求参数封装
+        Gson gson = new Gson();
+        Map paramsMap = new HashMap();
+        paramsMap.put("out_trade_no", orderNo);//订单编号
+        paramsMap.put("out_refund_no", refundInfo.getRefundNo());//退款单编号
+        paramsMap.put("reason",reason);//退款原因
+        // 退款通知地址，退款也进行了回调通知，类似下单处理？
+        paramsMap.put("notify_url", wxPayConfig.getNotifyDomain().concat(WxNotifyType.REFUND_NOTIFY.getType()));
+
+        Map amountMap = new HashMap();
+        amountMap.put("refund", refundInfo.getRefund());//退款金额
+        amountMap.put("total", refundInfo.getTotalFee());//原订单金额
+        amountMap.put("currency", "CNY");//退款币种
+        paramsMap.put("amount", amountMap);
+
+        //将参数转换成json字符串
+        String jsonParams = gson.toJson(paramsMap);
+        log.info("请求参数:{}" + jsonParams);
+
+        // 封装到请求中，并设置请求格式和响应格式
+        StringEntity entity = new StringEntity(jsonParams, "utf-8");
+        entity.setContentType("application/json");
+        httpPost.setEntity(entity);
+        httpPost.setHeader("Accept", "application/json");
+
+        // 发起退款请求，内部对请求做了签名，响应也验签了
+        CloseableHttpResponse response = wxPayClient.execute(httpPost);
+
+        // 解析响应
+        try {
+            String bodyAsString = EntityUtils.toString(response.getEntity());
+            int statusCode = response.getStatusLine().getStatusCode();
+            if (statusCode == 200) {
+                log.info("成功, 退款返回结果 = " + bodyAsString);
+            } else if (statusCode == 204) {
+                log.info("成功");
+            } else {
+                throw new RuntimeException("退款异常, 响应码 = " + statusCode+ ", 退款返回结果 = " + bodyAsString);
+            }
+            // 更新订单状态
+            orderInfoService.updateStatusByOrderNo(orderNo, OrderStatus.REFUND_PROCESSING);
+
+            // 更新退款单
+            refundInfoService.updateRefund(bodyAsString);
+        } finally {
+            response.close();
+        }
     }
 
 }

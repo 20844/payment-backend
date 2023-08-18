@@ -131,4 +131,16 @@ public class OrderInfoServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo
         queryWrapper.eq("payment_type", payType);
         return baseMapper.selectList(queryWrapper);
     }
+
+    /**
+     * 根据订单号获取订单
+     * @param orderNo
+     * @return
+     */
+    @Override
+    public OrderInfo getOrderByOrderNo(String orderNo) {
+        QueryWrapper<OrderInfo> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("order_no", orderNo);
+        return baseMapper.selectOne(queryWrapper);
+    }
 }

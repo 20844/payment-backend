@@ -38,4 +38,9 @@ public interface OrderInfoService extends IService<OrderInfo> {
      * 找出创建超过minutes分钟并且未支付的订单
      */
     List<OrderInfo> getNoPayOrderByDuration(int minutes, String payType);
+
+    /**
+     * 根据订单号查订单
+     */
+    OrderInfo getOrderByOrderNo(String orderNo);
 }
