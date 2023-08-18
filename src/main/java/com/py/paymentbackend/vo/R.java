@@ -1,15 +1,18 @@
 package com.py.paymentbackend.vo;
 
 import lombok.Data;
+import lombok.experimental.Accessors;
 
 import java.util.HashMap;
+import java.util.Map;
 
 @Data
+@Accessors(chain = true)
 public class R {
 
     private Integer code;
     private String message;
-    private HashMap<String, Object> data = new HashMap<>();
+    private Map<String, Object> data = new HashMap<>();
 
 
     public static R ok(){

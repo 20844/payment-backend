@@ -72,6 +72,7 @@ public class WxPayConfig {
      */
     @Bean
     public ScheduledUpdateCertificatesVerifier getVerifier(){
+        log.info("获取签名验证器");
         // 获取商户私钥
         PrivateKey privateKey = getPrivateKey(privateKeyPath);
         // 私钥签名对象（签名）
@@ -92,6 +93,7 @@ public class WxPayConfig {
      */
     @Bean(name = "wxPayClient")
     public CloseableHttpClient getWxPayClient(ScheduledUpdateCertificatesVerifier verifier){
+        log.info("获取httpClient");
         //获取商户私钥
         PrivateKey privateKey = getPrivateKey(privateKeyPath);
         //用于构造HttpClient
