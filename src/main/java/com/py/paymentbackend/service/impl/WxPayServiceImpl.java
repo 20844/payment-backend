@@ -3,11 +3,14 @@ package com.py.paymentbackend.service.impl;
 import com.google.gson.Gson;
 import com.py.paymentbackend.config.WxPayConfig;
 import com.py.paymentbackend.entity.OrderInfo;
+import com.py.paymentbackend.enums.OrderStatus;
 import com.py.paymentbackend.enums.PayType;
 import com.py.paymentbackend.enums.wxpay.WxApiType;
 import com.py.paymentbackend.enums.wxpay.WxNotifyType;
 import com.py.paymentbackend.service.OrderInfoService;
+import com.py.paymentbackend.service.PaymentInfoService;
 import com.py.paymentbackend.service.WxPayService;
+import com.wechat.pay.contrib.apache.httpclient.util.AesUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpPost;
@@ -19,9 +22,12 @@ import org.springframework.util.StringUtils;
 
 import javax.annotation.Resource;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * @author yangjiewei
@@ -46,6 +52,11 @@ public class WxPayServiceImpl implements WxPayService {
      */
     @Resource
     private CloseableHttpClient wxPayClient;
+
+    @Resource
+    private PaymentInfoService paymentInfoService;
+
+    private final ReentrantLock lock = new ReentrantLock();
 
 
     /**
@@ -159,5 +170,86 @@ public class WxPayServiceImpl implements WxPayService {
         }
     }
 
+
+    /**
+     * 处理订单
+     * @param bodyMap 支付通知参数
+     * @throws GeneralSecurityException
+     */
+    @Override
+    public void processOrder(Map<String, Object> bodyMap) throws GeneralSecurityException {
+        log.info("处理订单");
+
+        // 1.密文解密
+        String plainText = decryptFromResource(bodyMap);
+
+        // 2.转换明文 https://pay.weixin.qq.com/wiki/doc/apiv3_partner/apis/chapter4_4_5.shtml
+        Gson gson = new Gson();
+        Map<String, Object> plainTextMap = gson.fromJson(plainText, HashMap.class);
+        String orderNo = (String) plainTextMap.get("out_trade_no");
+
+        /**
+         * 在对业务数据进行状态检查和处理之前，这里要使用数据锁进行并发控制，以避免函数重入导致的数据混乱
+         * 尝试获取锁成功之后才去处理数据，相比于同步锁，这里不会去等待，获取不到则直接返回
+         */
+        if (lock.tryLock()) {
+            try {
+                // 处理重复通知 出于接口幂等性考虑（无论接口被调用多少次，产生的结果都是一致的）
+                String orderStatus = orderInfoService.getOrderStatus(orderNo);
+                if (!OrderStatus.NOTPAY.getType().equals(orderStatus)) {
+                    return ;
+                }
+
+/*                // 模拟通知并发 try catch快捷键是 ctrl+wins+alt+t
+                // 虽然前面处理了重复通知，但是这里是并发导致，这里要使用数据锁进行并发控制，以避免函数重入导致的数据混乱
+                try {
+                    TimeUnit.SECONDS.sleep(5);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }*/
+
+                // 3.更新订单状态
+                orderInfoService.updateStatusByOrderNo(orderNo, OrderStatus.SUCCESS);
+
+                // 4.记录支付日志
+                paymentInfoService.createPaymentInfo(plainText);
+            } finally {
+                // 要主动释放锁
+                lock.unlock();
+            }
+        }
+
+    }
+
+    /**
+     * 对称解密
+     * 为了保证安全性，微信支付在回调通知和平台证书下载接口中，对关键信息进行了AES-256-GCM加密。
+     * 证书和回调报文使用的加密密钥为APIv3密钥，32字节 https://wechatpay-api.gitbook.io/wechatpay-api-v3/ren-zheng/api-v3-mi-yao
+     */
+    private String decryptFromResource(Map<String, Object> bodyMap) throws GeneralSecurityException {
+        log.info("密文解密");
+        // 获取通知数据中的resource，这部分有加密数据
+        Map<String, String> resourceMap = (Map) bodyMap.get("resource");
+        // 数据密文
+        String ciphertext = resourceMap.get("ciphertext");
+        // 随机串
+        String nonce = resourceMap.get("nonce");
+        // 附加数据
+        String associatedData = resourceMap.get("associated_data");
+
+        log.info("密文数据：{}", ciphertext);
+
+        // 用APIv3密钥去解密
+        AesUtil aesUtil = new AesUtil(wxPayConfig.getApiV3Key().getBytes(StandardCharsets.UTF_8));
+
+        // 使用封装好的工具类去解密
+        String plainText = aesUtil.decryptToString(
+                associatedData.getBytes(StandardCharsets.UTF_8),
+                nonce.getBytes(StandardCharsets.UTF_8),
+                ciphertext);
+
+        log.info("明文：{}", plainText);
+        return plainText;
+    }
 
 }

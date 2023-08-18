@@ -84,4 +84,35 @@ public class OrderInfoServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo
         queryWrapper.orderByDesc("create_time");
         return baseMapper.selectList(queryWrapper);
     }
+
+    @Override
+    public String getOrderStatus(String orderNo) {
+        QueryWrapper<OrderInfo> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("order_no", orderNo);
+        OrderInfo orderInfo = baseMapper.selectOne(queryWrapper);
+        if (Objects.isNull(orderInfo)) {
+            return null;
+        }
+        return orderInfo.getOrderStatus();
+    }
+
+
+    /**
+     * 更新订单支付状态
+     */
+    @Override
+    public void updateStatusByOrderNo(String orderNo, OrderStatus orderStatus) {
+        log.info("更新订单状态：{}", orderStatus.getType());
+        QueryWrapper<OrderInfo> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("order_no", orderNo);
+
+        // 这里要两次数据库交互，可以试下直接更新
+        // OrderInfo orderInfo = baseMapper.selectOne(queryWrapper);
+        // orderInfo.setOrderStatus(orderStatus.getType());
+        // baseMapper.updateById(orderInfo);
+
+        OrderInfo orderInfo = new OrderInfo();
+        orderInfo.setOrderStatus(orderStatus.getType());
+        baseMapper.update(orderInfo, queryWrapper);
+    }
 }
