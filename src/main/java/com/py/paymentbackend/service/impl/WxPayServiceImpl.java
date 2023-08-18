@@ -8,6 +8,7 @@ import com.py.paymentbackend.enums.OrderStatus;
 import com.py.paymentbackend.enums.PayType;
 import com.py.paymentbackend.enums.wxpay.WxApiType;
 import com.py.paymentbackend.enums.wxpay.WxNotifyType;
+import com.py.paymentbackend.enums.wxpay.WxRefundStatus;
 import com.py.paymentbackend.enums.wxpay.WxTradeState;
 import com.py.paymentbackend.service.OrderInfoService;
 import com.py.paymentbackend.service.PaymentInfoService;
@@ -456,6 +457,101 @@ public class WxPayServiceImpl implements WxPayService {
             refundInfoService.updateRefund(bodyAsString);
         } finally {
             response.close();
+        }
+    }
+
+    /**
+     * 查询退款使用
+     * @param refundNo
+     * @return
+     */
+    @Override
+    public String queryRefund(String refundNo) throws IOException {
+        log.info("查询退款...");
+        String url = wxPayConfig.getDomain().concat(String.format(WxApiType.DOMESTIC_REFUNDS_QUERY.getType(), refundNo));
+        HttpGet httpGet = new HttpGet(url);
+        httpGet.setHeader("Accept", "application/json");
+        CloseableHttpResponse response = wxPayClient.execute(httpGet);
+        // 解析响应
+        try {
+            String bodyAsString = EntityUtils.toString(response.getEntity());
+            int statusCode = response.getStatusLine().getStatusCode();
+            if (statusCode == 200) {
+                log.info("成功, 查询退款返回结果 = " + bodyAsString);
+            } else if (statusCode == 204) {
+                log.info("成功");
+            } else {
+                throw new RuntimeException("查询退款异常, 响应码 = " + statusCode+ ", 返回结果 = " + bodyAsString);
+            }
+            return bodyAsString;
+        } finally {
+            response.close();
+        }
+    }
+
+    /**
+     * 核实订单状态：调用微信支付查询退款接口
+     * @param refundNo
+     */
+    @Override
+    public void checkRefundStatus(String refundNo) throws IOException {
+        // 1.查询退款订单
+        String refund = this.queryRefund(refundNo);
+
+        // 2.解析响应信息
+        Gson gson = new Gson();
+        Map<String, Object> refundMap = gson.fromJson(refund, HashMap.class);
+        // 获取微信支付端退款状态
+        String status = (String) refundMap.get("status");
+        String orderNo = (String) refundMap.get("out_trade_no");
+        if (WxRefundStatus.SUCCESS.getType().equals(status)) {
+            // 已经成功退款
+            log.info("核实订单已经成功退款，orderNo:{}, refundNo:{}", orderNo, refundNo);
+            // 3.更新订单状态
+            orderInfoService.updateStatusByOrderNo(orderNo, OrderStatus.REFUND_SUCCESS);
+            // 4.更新退款单
+            refundInfoService.updateRefund(refund);
+        }
+        if (WxRefundStatus.ABNORMAL.getType().equals(status)) {
+            // 退款异常
+            log.warn("退款异常，orderNo:{}, refundNo:{}", orderNo, refundNo);
+            // 3.更新订单状态
+            orderInfoService.updateStatusByOrderNo(orderNo, OrderStatus.REFUND_ABNORMAL);
+            // 4.更新退款单
+            refundInfoService.updateRefund(refund);
+        }
+
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void processRefund(Map<String, Object> dataMap) throws Exception {
+        // 1.日志记录、上可重入锁
+        log.info("处理退款订单...");
+
+        // 2.转换响应中的密文
+        String plainText = decryptFromResource(dataMap);
+        // 将明文转换成map
+        Gson gson = new Gson();
+        HashMap plainTextMap = gson.fromJson(plainText, HashMap.class);
+        String orderNo = (String)plainTextMap.get("out_trade_no");
+
+        // 3.根据退款情况处理订单
+        if (lock.tryLock()) {
+            try {
+                String orderStatus = orderInfoService.getOrderStatus(orderNo);
+                // 订单状态不是退款中，则直接返回 fixme 不是特别理解 不是退款中，那么就是退款成功或者退款异常，状态不变即可。
+                if (!OrderStatus.REFUND_PROCESSING.getType().equals(orderStatus)) {
+                    return;
+                }
+                // 3.更新订单状态
+                orderInfoService.updateStatusByOrderNo(orderNo, OrderStatus.REFUND_SUCCESS);
+                // 4.更新退款单
+                refundInfoService.updateRefund(plainText);
+            } finally {
+                // 5.要主动释放锁
+                lock.unlock();
+            }
         }
     }
 

@@ -1,8 +1,10 @@
 package com.py.paymentbackend.task;
 
 import com.py.paymentbackend.entity.OrderInfo;
+import com.py.paymentbackend.entity.RefundInfo;
 import com.py.paymentbackend.enums.PayType;
 import com.py.paymentbackend.service.OrderInfoService;
+import com.py.paymentbackend.service.RefundInfoService;
 import com.py.paymentbackend.service.WxPayService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -24,6 +26,9 @@ public class WxPayTask {
 
     @Resource
     private WxPayService wxPayService;
+
+    @Resource
+    private RefundInfoService refundInfoService;
 
 
     /**
@@ -55,6 +60,22 @@ public class WxPayTask {
             log.warn("超时订单:{}", orderNo);
             // 核实订单状态：调用微信支付查单接口
             wxPayService.checkOrderStatus(orderNo);
+        }
+    }
+
+    /**
+     * 从第0秒开始每隔30秒执行1次，查询创建超过5分钟，并且未成功的退款单
+     */
+    //@Scheduled(cron = "0/30 * * * * ?")
+    public void refundConfirm() throws Exception {
+        log.info("refundConfirm 被执行......");
+        // 找出申请退款超过5分钟并且未成功的退款单
+        List<RefundInfo> refundInfos = refundInfoService.getNoRefundOrderByDuration(5, PayType.WXPAY.getType());
+        for (RefundInfo refundInfo : refundInfos) {
+            // 核实订单状态：调用微信支付查询退款接口
+            String refundNo = refundInfo.getRefundNo();
+            log.warn("超时未退款的退款单号:{}", refundNo);
+            wxPayService.checkRefundStatus(refundNo);
         }
     }
 

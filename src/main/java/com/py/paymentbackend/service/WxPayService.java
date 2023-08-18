@@ -48,5 +48,24 @@ public interface WxPayService {
      */
     void refund(String orderNo, String reason) throws IOException;
 
+    /**
+     * 查询退款接口用
+     * @param refundNo
+     * @return
+     */
+    String queryRefund(String refundNo) throws IOException;
+
+    /**
+     * 检查退款状态
+     * @param refundNo
+     */
+    void checkRefundStatus(String refundNo) throws IOException;
+
+    /**
+     * 处理退款订单
+     * @param dataMap
+     */
+    void processRefund(Map<String, Object> dataMap) throws Exception;
+
 
 }

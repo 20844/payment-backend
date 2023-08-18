@@ -171,5 +171,78 @@ public class WxPayController {
         return R.ok();
     }
 
+    /**
+     * 查询退款情况
+     * @param refundNo 退款编号，商户内部生成
+     * @return
+     * {
+     *   "code": 0,
+     *   "message": "查询成功",
+     *   "data": {
+     *     "result": "{\"amount\":{\"currency\":\"CNY\",\"discount_refund\":0,\"from\":[],\"payer_refund\":1,\"payer_total\":1,\"refund\":1,\"settlement_refund\":1,\"settlement_total\":1,\"total\":1},\"channel\":\"ORIGINAL\",\"create_time\":\"2022-08-31T15:50:34+08:00\",\"funds_account\":\"AVAILABLE\",\"out_refund_no\":\"REFUND_20220831155032315\",\"out_trade_no\":\"ORDER_20220828172344338\",\"promotion_detail\":[],\"refund_id\":\"50302003012022083124382080035\",\"status\":\"SUCCESS\",\"success_time\":\"2022-08-31T15:50:41+08:00\",\"transaction_id\":\"4200001550202208284738686219\",\"user_received_account\":\"支付用户零钱\"}"
+     *   }
+     * }
+     */
+    @ApiOperation("查询退款：测试用")
+    @GetMapping("/query-refund/{refundNo}")
+    public R queryRefund(@PathVariable String refundNo) throws IOException {
+        log.info("查询退款信息，refundNo:{}", refundNo);
+        String result = wxPayService.queryRefund(refundNo);
+        return R.ok().setMessage("查询成功").data("result", result);
+    }
+
+    /**
+     * 退款结果通知
+     * 退款状态改变后，微信会把相关的退款结果发送给用户
+     * https://pay.weixin.qq.com/wiki/doc/apiv3/apis/chapter3_4_11.shtml
+     * @param request
+     * @param response
+     * @return
+     */
+    @PostMapping("/refunds/notify")
+    public String refundsNotify(HttpServletRequest request, HttpServletResponse response) {
+
+        // 1.日志处理
+        log.info("处理退款通知...");
+
+        // 2.获取请求参数
+        // 为了读返回的json字符串
+        Gson gson = new Gson();
+        // 为了响应的数据
+        Map<String, String> map = new HashMap<>();
+        try {
+            // 2.1处理通知参数
+            String data = HttpUtils.readData(request);
+            Map<String, Object> dataMap = gson.fromJson(data, HashMap.class);
+            // 为了校验请求签名
+            String requestId = (String) dataMap.get("id");
+            // 验证签名
+            WechatPay2ValidatorForRequest wechatPay2ValidatorForRequest = new WechatPay2ValidatorForRequest(verifier, data, requestId);
+            if (!wechatPay2ValidatorForRequest.validate(request)) {
+                log.error("退款通知验签失败...");
+                // 失败应答
+                response.setStatus(500);
+                map.put("code", "FAIL");
+                map.put("message", "退款通知验签失败");
+                return gson.toJson(map);
+            }
+            log.info("退款通知验签成功...");
+            // 3.处理退款订单
+            wxPayService.processRefund(dataMap);
+            // 成功应答
+            response.setStatus(200);
+            map.put("code", "SUCCESS");
+            map.put("message", "成功");
+            return gson.toJson(map);
+        } catch (Exception e) {
+            e.printStackTrace();
+            // 4.设置响应参数
+            response.setStatus(500);
+            map.put("code", "FAIL");
+            map.put("message", "失败");
+            return gson.toJson(map);
+        }
+    }
+
 
 }
