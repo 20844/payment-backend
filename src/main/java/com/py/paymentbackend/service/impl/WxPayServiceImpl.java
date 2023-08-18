@@ -252,4 +252,65 @@ public class WxPayServiceImpl implements WxPayService {
         return plainText;
     }
 
+    /**
+     * 用户取消订单
+     */
+    @Override
+    public void cancelOrder(String orderNo) throws IOException {
+        // 调用微信支付的关单接口
+        this.closeOrder(orderNo);
+        //更新商户端的订单状态
+        orderInfoService.updateStatusByOrderNo(orderNo, OrderStatus.CANCEL);
+    }
+
+    /**
+     * 关单接口调用
+     * https://pay.weixin.qq.com/wiki/doc/apiv3/apis/chapter3_1_3.shtml
+     * 以下情况需要调用关单接口：
+     *    1、商户订单支付失败需要生成新单号重新发起支付，要对原订单号调用关单，避免重复支付；
+     *    2、系统下单后，用户支付超时，系统退出不再受理，避免用户继续，请调用关单接口。
+     * @param orderNo
+     */
+    private void closeOrder(String orderNo) throws IOException {
+        log.info("关单接口的调用，订单号：{}", orderNo);
+        // 创建远程请求对象
+        String url = String.format(WxApiType.CLOSE_ORDER_BY_NO.getType(), orderNo);
+        url = wxPayConfig.getDomain().concat(url);
+        HttpPost httpPost = new HttpPost(url);
+
+        // 组装json请求体
+        Gson gson = new Gson();
+        Map<String, String> paramsMap = new HashMap<>();
+        // todo 目前文档是有 服务商务号、子商户号，如果是 JSAPI则对得上
+        paramsMap.put("mchid", wxPayConfig.getMchId());
+        String jsonParams = gson.toJson(paramsMap);
+        log.info("请求参数：{}", jsonParams);
+
+        // 将请求参数设置到请求对象中
+        StringEntity entity = new StringEntity(jsonParams,"utf-8");
+        entity.setContentType("application/json");
+        httpPost.setEntity(entity);
+        httpPost.setHeader("Accept", "application/json");
+
+        // 完成签名并执行请求
+        CloseableHttpResponse response = wxPayClient.execute(httpPost);
+
+        try {
+            int statusCode = response.getStatusLine().getStatusCode();
+            // 响应状态码
+            if (statusCode == 200) {
+                // 处理成功
+                log.info("成功200");
+            } else if (statusCode == 204) {
+                // 处理成功，无返回Body
+                log.info("成功204");
+            } else {
+                log.info("Native下单失败,响应码 = " + statusCode);
+                throw new IOException("request failed");
+            }
+        } finally {
+            response.close();
+        }
+    }
+
 }
