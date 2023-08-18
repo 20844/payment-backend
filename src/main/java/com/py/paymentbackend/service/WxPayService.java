@@ -30,5 +30,10 @@ public interface WxPayService {
      */
     void cancelOrder(String orderNo) throws IOException;
 
+    /**
+     * 查询订单
+     */
+    String queryOrder(String orderNo) throws IOException;
+
 
 }

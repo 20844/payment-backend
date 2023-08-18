@@ -13,6 +13,7 @@ import com.py.paymentbackend.service.WxPayService;
 import com.wechat.pay.contrib.apache.httpclient.util.AesUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
@@ -308,6 +309,41 @@ public class WxPayServiceImpl implements WxPayService {
                 log.info("Native下单失败,响应码 = " + statusCode);
                 throw new IOException("request failed");
             }
+        } finally {
+            response.close();
+        }
+    }
+
+    /**
+     * https://pay.weixin.qq.com/wiki/doc/apiv3/apis/chapter3_1_2.shtml
+     * 文档上的path方法是指在url上的值，query则是参数
+     * 查询订单调用
+     */
+    @Override
+    public String queryOrder(String orderNo) throws IOException {
+        log.info("查单接口调用：{}", orderNo);
+        String url = String.format(WxApiType.ORDER_QUERY_BY_NO.getType(), orderNo);
+        url = wxPayConfig.getDomain().concat(url).concat("?mchid=").concat(wxPayConfig.getMchId());
+
+        HttpGet httpGet = new HttpGet(url);
+        httpGet.setHeader("Accept", "application/json");
+
+        // 完成签名并执行请求
+        CloseableHttpResponse response = wxPayClient.execute(httpGet);
+
+        try {
+            String bodyAsString = EntityUtils.toString(response.getEntity());
+            int statusCode = response.getStatusLine().getStatusCode();
+            if (statusCode == 200) {
+                log.info("成功，结果是：{}", bodyAsString);
+            }else if (statusCode == 204) {
+                log.info("成功，无返回内容");
+            }else {
+                log.info("查询订单失败,响应码 = " + statusCode+ ",返回结果 = " +
+                        bodyAsString);
+                throw new IOException("queryOrder request failed");
+            }
+            return bodyAsString;
         } finally {
             response.close();
         }
