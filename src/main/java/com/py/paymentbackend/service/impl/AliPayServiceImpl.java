@@ -6,9 +6,11 @@ import com.alipay.api.AlipayClient;
 import com.alipay.api.request.*;
 import com.alipay.api.response.*;
 import com.py.paymentbackend.entity.OrderInfo;
+import com.py.paymentbackend.enums.OrderStatus;
 import com.py.paymentbackend.enums.PayType;
 import com.py.paymentbackend.service.AliPayService;
 import com.py.paymentbackend.service.OrderInfoService;
+import com.py.paymentbackend.service.PaymentInfoService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
@@ -16,6 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 import java.math.BigDecimal;
+import java.util.Map;
+import java.util.concurrent.locks.ReentrantLock;
 
 @Slf4j
 @Service
@@ -29,6 +33,11 @@ public class AliPayServiceImpl implements AliPayService {
 
     @Resource
     private Environment config;
+
+    @Resource
+    private PaymentInfoService paymentInfoService;
+
+    private final ReentrantLock lock = new ReentrantLock();
 
     @Override
     @Transactional // 允许回滚
@@ -66,6 +75,42 @@ public class AliPayServiceImpl implements AliPayService {
         } catch (AlipayApiException e) {
             e.printStackTrace();
             throw new RuntimeException("创建支付交易失败");
+        }
+    }
+
+
+    /**
+     * 处理订单
+     *   1.更新订单状态
+     *   2.记录支付日志
+     * @param params
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void processOrder(Map<String, String> params) {
+
+        log.info("处理订单");
+
+        String outTradeNo = params.get("out_trade_no");
+
+        // 数据并发问题，在业务处理时，应该加锁
+        if (lock.tryLock()) {
+            try{
+
+                // 处理重复通知
+                // 接口调用的幂等性：无论接口被调用多少次，以下业务执行一次
+                String orderStatus = orderInfoService.getOrderStatus(outTradeNo);
+                if (!OrderStatus.NOTPAY.getType().equals(orderStatus)) {
+                    return;
+                }
+
+                orderInfoService.updateStatusByOrderNo(outTradeNo, OrderStatus.SUCCESS);
+
+                paymentInfoService.createPaymentInfoForAlipay(params);
+
+            }finally {
+                lock.unlock();
+            }
         }
     }
 

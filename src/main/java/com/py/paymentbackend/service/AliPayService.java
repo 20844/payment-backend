@@ -2,6 +2,8 @@ package com.py.paymentbackend.service;
 
 import com.alipay.api.AlipayApiException;
 
+import java.util.Map;
+
 
 public interface AliPayService {
 
@@ -11,6 +13,14 @@ public interface AliPayService {
      * @return
      */
     String tradeCreate(Long productId) throws AlipayApiException;
+
+    /**
+     * 处理订单
+     *   1.更新订单状态
+     *   2.记录支付日志
+     * @param params
+     */
+    void processOrder(Map<String, String> params);
 
 
 }
