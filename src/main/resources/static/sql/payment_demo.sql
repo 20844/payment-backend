@@ -31,6 +31,7 @@ CREATE TABLE `t_payment_info` (
       `trade_state` varchar(50) DEFAULT NULL COMMENT '交易状态',
       `payer_total` int(11) DEFAULT NULL COMMENT '支付金额(分)',
       `content` text COMMENT '通知参数',
+      `payment_type` varchar(20) DEFAULT NULL COMMENT '支付类型',
       `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
       `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
       PRIMARY KEY (`id`)
