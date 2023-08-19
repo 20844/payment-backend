@@ -143,12 +143,42 @@ public class AliPayServiceImpl implements AliPayService {
                 log.info("关单接口调用成功");
             } else {
                 log.warn("关单接口调用失败，返回状态码是:{}，描述信息是:{}", response.getCode(), response.getMsg());
-                // 为什么不抛异常呢？
+                // 为什么不抛异常呢？因为关单接口调用失败，不影响业务，只是记录一下日志
+                // 支付宝可能返回没有订单   貌似应为用户没有扫码  或 输入用户密码  再关闭    没生成订单
+                //不抛出异常不影响后续的本地业务逻辑处理
                 // throw new RuntimeException("关单接口的调用失败");
             }
         } catch (Exception e) {
             e.printStackTrace();
             throw new RuntimeException("关单接口调用失败");
+        }
+    }
+
+    /**
+     * 查询订单
+     * @param orderNo
+     * @return 返回订单查询结果，如果返回null则表示支付宝端尚未创建订单
+     */
+    @Override
+    public String queryOrder(String orderNo) {
+        try {
+            log.info("查单接口调用:{}", orderNo);
+            AlipayTradeQueryRequest request = new AlipayTradeQueryRequest();
+            JSONObject bizContent = new JSONObject();
+            bizContent.put("out_trade_no", orderNo);
+            request.setBizContent(bizContent.toString());
+            AlipayTradeQueryResponse response = alipayClient.execute(request);
+            if(response.isSuccess()){
+                log.info("调用成功，返回结果:{}", response.getBody());
+                return response.getBody();
+            } else {
+                log.info("调用失败，返回码:{}, 返回描述:{} ", response.getCode(), response.getMsg() + " " + response.getSubMsg());
+                // 订单不存在
+                return null;
+            }
+        } catch (AlipayApiException e) {
+            e.printStackTrace();
+            throw new RuntimeException("查单接口的调用失败");
         }
     }
 
