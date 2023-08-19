@@ -172,5 +172,16 @@ public class AliPayController {
         return R.ok().setMessage("查询退款单成功").data("result", result);
     }
 
+    /**
+     * 7.查询对账单下载地址接⼝
+     * 根据账单类型和日期获取账单url地址
+     */
+    @ApiOperation("获取账单url")
+    @GetMapping("/bill/downloadurl/query/{billDate}/{type}")
+    public R queryTradeBill(@PathVariable String billDate, @PathVariable String type) {
+        log.info("获取账单url");
+        String downloadUrl = aliPayService.queryBill(billDate, type);
+        return R.ok().setMessage("获取账单url成功").data("downloadUrl", downloadUrl);
+    }
 
 }

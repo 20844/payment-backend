@@ -225,7 +225,7 @@ public class AliPayServiceImpl implements AliPayService {
             // 如果确认订单已支付则更新本地订单状态
             orderInfoService.updateStatusByOrderNo(orderNo, OrderStatus.SUCCESS);
             // 记录支付日志
-            paymentInfoService.createPaymentInfo(result);
+            paymentInfoService.createPaymentInfoForAlipay(alipayTradeQueryResponse);
         }
 
         if (AliTradeState.NOTPAY.getStatus().equals(tradeStatus)) {
@@ -336,6 +336,41 @@ public class AliPayServiceImpl implements AliPayService {
         } catch (AlipayApiException e) {
             e.printStackTrace();
             throw new RuntimeException("查单接口的调用失败");
+        }
+    }
+
+    /**
+     * 查询账单
+     * @param billDate
+     * @param type
+     * @return
+     */
+    @Override
+    public String queryBill(String billDate, String type) {
+
+        try {
+            AlipayDataDataserviceBillDownloadurlQueryRequest request = new
+                    AlipayDataDataserviceBillDownloadurlQueryRequest();
+            JSONObject bizContent = new JSONObject();
+            bizContent.put("bill_type", type);
+            bizContent.put("bill_date", billDate);
+            request.setBizContent(bizContent.toString());
+            AlipayDataDataserviceBillDownloadurlQueryResponse response = alipayClient.execute(request);
+            if(response.isSuccess()) {
+                log.info("调用成功，返回结果:" + response.getBody());
+                // 获取账单下载地址
+                Gson gson = new Gson();
+                // fixme 为什么是这个类型 linkedtreemap，换成map是否可行
+                HashMap<String, LinkedTreeMap> resultMap = gson.fromJson(response.getBody(), HashMap.class);
+                LinkedTreeMap billDownloadurlResponse = resultMap.get("alipay_data_dataservice_bill_downloadurl_query_response");
+                return (String)billDownloadurlResponse.get("bill_download_url");
+            }else {
+                log.info("调用失败，返回码:" + response.getCode() + ", 返回描述: " + response.getMsg() + response.getSubMsg());
+                throw new RuntimeException("申请账单失败");
+            }
+        } catch (AlipayApiException e) {
+            e.printStackTrace();
+            throw new RuntimeException("申请账单失败");
         }
     }
 

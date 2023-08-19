@@ -61,4 +61,12 @@ public interface AliPayService {
      * @param refundNo
      */
     void checkRefundStatus(String refundNo);
+
+    /**
+     * 查询账单地址
+     * @param billDate
+     * @param type
+     * @return
+     */
+    String queryBill(String billDate, String type);
 }
