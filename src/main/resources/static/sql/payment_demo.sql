@@ -66,7 +66,7 @@ CREATE TABLE `t_refund_info` (
      `total_fee` int(11) DEFAULT NULL COMMENT '原订单金额(分)',
      `refund` int(11) DEFAULT NULL COMMENT '退款金额(分)',
      `reason` varchar(50) DEFAULT NULL COMMENT '退款原因',
-     `refund_status` varchar(10) DEFAULT NULL COMMENT '退款状态',
+     `refund_status` varchar(50) DEFAULT NULL COMMENT '退款状态',
      `content_return` text COMMENT '申请退款返回参数',
      `content_notify` text COMMENT '退款结果通知参数',
      `payment_type` varchar(20) DEFAULT NULL COMMENT '支付类型',

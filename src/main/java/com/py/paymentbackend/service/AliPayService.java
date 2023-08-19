@@ -41,4 +41,24 @@ public interface AliPayService {
      * @param orderNo
      */
     void checkOrderStatus(String orderNo);
+
+    /**
+     * 根据订单号退款
+     * @param orderNo
+     * @param reason
+     */
+    void refund(String orderNo, String reason);
+
+    /**
+     * 根据订单号查询退款单
+     * @param orderNo
+     * @return
+     */
+    String queryRefund(String orderNo);
+
+    /**
+     * 检查退款状态，并做对应的处理
+     * @param refundNo
+     */
+    void checkRefundStatus(String refundNo);
 }

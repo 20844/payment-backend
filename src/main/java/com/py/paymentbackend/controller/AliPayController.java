@@ -148,5 +148,29 @@ public class AliPayController {
         return R.ok().setMessage("查询成功").data("result", result);
     }
 
+    /**
+     * https://opendocs.alipay.com/open/02e7go
+     * 5.统一收单交易退款
+     */
+    @ApiOperation("申请退款")
+    @PostMapping("/trade/refund/{orderNo}/{reason}")
+    public R refunds(@PathVariable String orderNo, @PathVariable String reason){
+        log.info("申请退款...");
+        aliPayService.refund(orderNo, reason);
+        return R.ok().setMessage("退款成功");
+    }
+
+    /**
+     * 6.统⼀收单交易退款查询
+     * 这个也是用来测试的，退款查询是要定时任务
+     */
+    @ApiOperation("统⼀收单交易退款查询")
+    @GetMapping("/trade/fastpay/refund/{orderNo}")
+    public R queryRefund(@PathVariable String orderNo){
+        log.info("退款查询");
+        String result = aliPayService.queryRefund(orderNo);
+        return R.ok().setMessage("查询退款单成功").data("result", result);
+    }
+
 
 }
